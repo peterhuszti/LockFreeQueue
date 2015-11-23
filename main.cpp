@@ -5,11 +5,17 @@
 #include <vector>
 #include <future>
 
-#define numberOfThreads 10
+#define numberOfThreads 20
 
 using namespace std;
 
-enum e{EMPTYQUEUE};
+class exc: public exception
+{
+    const char* what() const throw()
+    {
+        return "\n\nDequeing from an empty queue!\n\n";
+    }
+} emptyQ;
 
 template<class T>
 class lockFreeQueue
@@ -46,12 +52,10 @@ public:
     void enq(const T& value)
     {
         Node* node = new Node(value);
-        Node* last;
-        Node* next;
         while(true)
         {
-            last = tail.load();
-            next = last->next.load();
+            Node* last = tail.load();
+            Node* next = last->next.load();
             if(last == tail.load())
             {
                 if(next == nullptr)
@@ -70,23 +74,20 @@ public:
         }
     }
 
-    void deq(promise<int>* res)
+    void deq(promise<T>* res)
     {
-        Node* first;
-        Node* last;
-        Node* next;
         while(true)
         {
-            first = head.load();
-            last = tail.load();
-            next = first->next.load();
+            Node* first = head.load();
+            Node* last = tail.load();
+            Node* next = first->next.load();
             if(first == head.load())
             {
                 if(first == last)
                 {
                     if(next == nullptr)
                     {
-                        throw EMPTYQUEUE;
+                        throw emptyQ;
                     }
                     atomic_compare_exchange_weak(&tail,&last,next);
                 }
@@ -110,9 +111,9 @@ public:
         cout << "HEAD -> ";
         while(p != nullptr)
         {
-            if(p->value == -1) cout << "nullptr -> ";
-            else if(p->next.load() != nullptr) cout << p->value << " -> ";
-            else cout << p->value << " <- ";
+            cout << p->value;
+            if(p->next.load() != nullptr) cout << " -> ";
+            else cout << " <- ";
 
             p = p->next.load();
         }
@@ -123,6 +124,8 @@ public:
 int main()
 {
     lockFreeQueue<int> q;
+
+//Enque
     vector<thread> thE;
 
     for(int i=0; i<numberOfThreads; ++i)
@@ -136,6 +139,7 @@ int main()
     }
     q.print();
 
+//Deque
     vector<thread> thD;
     cout<<"\nDEQUE: ";
 
@@ -151,20 +155,55 @@ int main()
         try
         {
             thD.push_back( thread( &lockFreeQueue<int>::deq, &q, &pro[i] ) );
+            cout << fut[i].get() << "  ";
         }
-        catch(enum e)
+        catch(exception& e)
         {
-            cout << "Dequeing from empty queue\n";
+            cout << e.what();
         }
     }
     for(int i=0; i<numberOfThreads; ++i)
     {
         thD[i].join();
     }
+    cout<<"\n";
+
+//Enque and deque together
+    cout << "\nEQ and DQ together:\n";
+
+    lockFreeQueue<int> lfq;
+    vector<thread> th;
+    vector<promise<int> > prom(numberOfThreads / 2);
+    vector<future<int> > futu;
+    for(int i=0; i<numberOfThreads/2; ++i)
+    {
+        futu.push_back(prom[i].get_future());
+    }
 
     for(int i=0; i<numberOfThreads; ++i)
     {
-        cout << fut[i].get() << "  ";
+        if(i%2 == 0)
+        {
+            th.push_back( thread( &lockFreeQueue<int>::enq, &lfq, i/2) );
+        }
+        else
+        {
+            try
+            {
+                th.push_back( thread( &lockFreeQueue<int>::deq, &lfq, &prom[i/2] ) );
+                cout << futu[i/2].get() << "  ";
+            }
+            catch(exception e)
+            {
+                cout << e.what();
+            }
+
+        }
+    }
+
+    for(int i=0; i<numberOfThreads; ++i)
+    {
+        th[i].join();
     }
     cout<<"\n";
 
