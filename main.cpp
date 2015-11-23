@@ -3,10 +3,13 @@
 #include <memory>
 #include <thread>
 #include <vector>
+#include <future>
 
 #define N 10
 
 using namespace std;
+
+enum e{EMPTYQUEUE};
 
 template<class T>
 class lockFreeQueue
@@ -16,7 +19,7 @@ class lockFreeQueue
         T value;
         atomic<Node*> next;
         Node(T value): value(value), next(nullptr) { }
-    //    Node(): value(-1), next(nullptr) { }
+        Node(): next(nullptr) { }
     };
 
     atomic<Node*> head;
@@ -26,7 +29,7 @@ public:
 
     lockFreeQueue()
     {
-        head.store(new Node( T(-1) ));
+        head.store(new Node( T() ));
         tail = head.load();
     }
     ~lockFreeQueue()
@@ -37,6 +40,7 @@ public:
             head.store(p->next);
             delete p;
         }
+        delete tail;
     }
 
     void enq(const T& value)
@@ -66,7 +70,7 @@ public:
         }
     }
 
-    T deq()
+    void deq(promise<int>* res)
     {
         Node* first;
         Node* last;
@@ -82,7 +86,7 @@ public:
                 {
                     if(next == nullptr)
                     {
-                        return -1;
+                        throw EMPTYQUEUE;
                     }
                     atomic_compare_exchange_weak(&tail,&last,next);
                 }
@@ -91,12 +95,12 @@ public:
                     T value = next->value;
                     if(atomic_compare_exchange_weak(&head,&first,next))
                     {
-                        return value;
+                        res->set_value(value);
+                        return;
                     }
                 }
             }
         }
-        delete first, last, next;
     }
 
     void print()
@@ -129,20 +133,51 @@ public:
 int main()
 {
     lockFreeQueue<int> q;
-    vector<thread> th;
+    vector<thread> thE;
 
     for(int i=0; i<N; ++i)
     {
-        th.push_back(thread(&lockFreeQueue<int>::enq,&q,i));
+        thE.push_back(thread(&lockFreeQueue<int>::enq,&q,i));
     }
     q.print();
 
     for(int i=0; i<N; ++i)
     {
-        th[i].join();
+        thE[i].join();
     }
 
-    int a = q.deq();
+    vector<thread> thD;
+    cout<<"\nDEQUE: ";
+
+    vector<promise<int> > pro(N);
+    vector<future<int> > fut;
+    for(int i=0; i<N; ++i)
+    {
+        fut.push_back(pro[i].get_future());
+    }
+
+    for(int i=0; i<N; ++i)
+    {
+        try
+        {
+            thD.push_back(thread(&lockFreeQueue<int>::deq,&q,&pro[i]));
+        }
+        catch(enum e)
+        {
+            cout << "Empty queue\n";
+        }
+    }
+    for(int i=0; i<N; ++i)
+    {
+        cout << fut[i].get() << "  ";
+    }
+    cout<<"\n";
+
+    for(int i=0; i<N; ++i)
+    {
+        thD[i].join();
+    }
+
     return 0;
 }
 
