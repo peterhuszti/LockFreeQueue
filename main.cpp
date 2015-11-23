@@ -5,7 +5,7 @@
 #include <vector>
 #include <future>
 
-#define N 10
+#define numberOfThreads 10
 
 using namespace std;
 
@@ -125,48 +125,48 @@ int main()
     lockFreeQueue<int> q;
     vector<thread> thE;
 
-    for(int i=0; i<N; ++i)
+    for(int i=0; i<numberOfThreads; ++i)
     {
-        thE.push_back(thread(&lockFreeQueue<int>::enq,&q,i));
+        thE.push_back( thread( &lockFreeQueue<int>::enq, &q, i) );
     }
-    q.print();
 
-    for(int i=0; i<N; ++i)
+    for(int i=0; i<numberOfThreads; ++i)
     {
         thE[i].join();
     }
+    q.print();
 
     vector<thread> thD;
     cout<<"\nDEQUE: ";
 
-    vector<promise<int> > pro(N);
+    vector<promise<int> > pro(numberOfThreads);
     vector<future<int> > fut;
-    for(int i=0; i<N; ++i)
+    for(int i=0; i<numberOfThreads; ++i)
     {
         fut.push_back(pro[i].get_future());
     }
 
-    for(int i=0; i<N; ++i)
+    for(int i=0; i<numberOfThreads; ++i)
     {
         try
         {
-            thD.push_back(thread(&lockFreeQueue<int>::deq,&q,&pro[i]));
+            thD.push_back( thread( &lockFreeQueue<int>::deq, &q, &pro[i] ) );
         }
         catch(enum e)
         {
-            cout << "Empty queue\n";
+            cout << "Dequeing from empty queue\n";
         }
     }
-    for(int i=0; i<N; ++i)
+    for(int i=0; i<numberOfThreads; ++i)
+    {
+        thD[i].join();
+    }
+
+    for(int i=0; i<numberOfThreads; ++i)
     {
         cout << fut[i].get() << "  ";
     }
     cout<<"\n";
-
-    for(int i=0; i<N; ++i)
-    {
-        thD[i].join();
-    }
 
     return 0;
 }
