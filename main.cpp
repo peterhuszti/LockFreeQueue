@@ -120,16 +120,6 @@ public:
     }
 };
 
-template<class C>
-void asd() {}
-
-class lol
-{
-public:
-
-        void lel() {}
-};
-
 int main()
 {
     lockFreeQueue<int> q;
